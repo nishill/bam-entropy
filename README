@@ -5,10 +5,15 @@ Files:
 
 README
 main.cpp
+Makefile
 BamAlignmentIterator.cpp
 BamAlignmentIterator.h
+CompressionIterator.cpp
+CompressionIterator.h
 
 Special Notes:
+
+The bamtools c++ library is necessary to run and use code. 
 
 The BamAlignmentIterator files were added to iterate through
 the the alignments in a combined fashion. This program computes
