@@ -16,11 +16,12 @@ Special Notes:
 The bamtools c++ library is necessary to run and use code. 
 
 The BamAlignmentIterator files were added to iterate through
-the the alignments in a combined fashion. This program computes
+the the alignments base by base. This program computes
 the entropy of a given bam file based on information theory.
 
 The CompressionIterator files are used as a new approach to 
 analyze entropy. This time a tree structure is created as a 
 list(genome position) of a map(base, QualInfo) of another
-map ( QualScore, number of occurenece)
+map ( QualScore, number of occurenece). This should allow for
+the analysis of entropy on genetic variants. 
 
