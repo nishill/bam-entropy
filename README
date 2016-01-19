@@ -1,0 +1,15 @@
+# README
+# $ID$
+
+Files:
+
+README
+main.cpp
+BamAlignmentIterator.cpp
+BamAlignmentIterator.h
+
+Special Notes:
+
+The BamAlignmentIterator files were added to iterate through
+the the alignments in a combined fashion. This program computes
+the entropy of a given bam file based on information theory.
