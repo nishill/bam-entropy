@@ -17,7 +17,7 @@ using namespace std;
 #include "api/BamAux.h"
 using namespace BamTools;
 
-typedef pair<char, char> BaseQualPair;   
+typedef pair<char, char> BaseQualPairFunc;   
 typedef map<char, size_t> quality_map;
 typedef map<char, quality_map> base_map;
         
@@ -32,7 +32,7 @@ class BA_Reader {
         void m_insert_base( base_map &, const BamAlignment&, int32_t);    
        
     public:
-    
+        
         struct BaseQualInfo {
             char m_base;
             char m_quality;
@@ -46,7 +46,7 @@ class BA_Reader {
         class CompressionIterator {
 
             public:
-                CompressionIterator( BA_Reader&);
+                CompressionIterator(BA_Reader&);
                 CompressionIterator();
                 bool operator== ( const CompressionIterator& ) const;
                 bool operator!= ( const CompressionIterator& ) const;
@@ -59,16 +59,34 @@ class BA_Reader {
                 BA_Reader* m_pba_reader;    
                 void m_next();
         };        
-        
+
         BA_Reader ( const string & fileName );
         void print_tree(); 
         CompressionIterator begin();
         CompressionIterator end(); 
         
-        typedef BaseQualPair (*pbq_summaryFunc)(const base_map& );
-        pbq_summaryFunc m_pbq_summaryFunc;
+        typedef BaseQualPairFunc (*bqpf_summaryFunc)(const base_map& );
+        bqpf_summaryFunc m_bqpf_summaryFunc;
+        void summarizeBases(bqpf_summaryFunc); 
+    
+        
+        class ListIterator {
 
-        void summarizeBases(pbq_summaryFunc); 
+            private:
+                PT::iterator m_pt_iter;
+                bqpf_summaryFunc m_pSummaryFunc;
+            public:
+                ListIterator( BA_Reader&, bqpf_summaryFunc );
+                ListIterator(BA_Reader&);
+                bool operator==(const ListIterator&) const;
+                bool operator!=(const ListIterator&) const;
+                ListIterator& operator++( int );
+                pair<char,char> operator*();
+        };
+
+        ListIterator lbegin(bqpf_summaryFunc );
+        ListIterator lend();    
+
 };
 
 #endif

@@ -39,7 +39,7 @@ using namespace BamTools;
 
 typedef map <string, size_t> G_Map;
 typedef map <string, size_t>::const_iterator MapIterator;
-
+typedef pair<char,char> BaseQualPair;
 
 // measure_entropy()
 // compute probability then finds 
@@ -93,78 +93,100 @@ void slide_window(G_Map& lkup, BamAlignmentReader bar, size_t k) {
 size_t sumQualScores(const quality_map& qm ) {
     size_t qual_scores = 0;
     quality_map::const_iterator qual_iter = qm.begin();
-    while ( qual_iter != qm.end()) 
+    while ( qual_iter != qm.end()){ 
         qual_scores += qual_iter->second;
+        qual_iter++;
+    }
     return qual_scores;
 }
 
 
-// qualToNum()
-size_t qualToNum(char q_value ) {
-
-    size_t result = 0;
-    
-    switch( q_value ) {
-        case 1: if (q_value == '!') result = 1.00000; 
-        case 2: if ( q_value == '"') result = 0.79433;
-        case 3: if (q_value == '#') result = 0.63096;
-        defualt: break;     
-    }
-
-    return result;
+// qualToProb()
+double qualToProb( char q_ascii ) {
+    if ( q_ascii < '!') q_ascii = '!';
+    if ( q_ascii > 'K') q_ascii = 'K';
+    double q_value = q_ascii - '!';
+    double p_value = pow(10.0, -q_value / 10.0);
+    return p_value;
 }
 
-
-// qualToChar()
-char qualToChar(size_t char_value ) {
-
-    char result = '\0';
-    
-    switch ( char_value ) {
-        case 1: if ( char_value == 1.00000) result = '!';
-        case 2: if ( char_value == 0.79433) result = '"';
-        case 3: if ( char_value == 0.63096) result = '#';
-        default: break;
-    }
-
+// probToQual()
+char probToQual( double p_value ) {
+    assert(p_value >= 0.0 and p_value <= 1.0 ); 
+    double q_value = -10.0* log10(p_value);
+    // add 0.5 to account for integer rounding
+    assert(q_value >= 0.0 and q_value < 41.5 );
+    char q_int_value = static_cast<char>(q_value + 0.5);
+    char result = '!' + q_int_value;
     return result;
-
 }
 
 // my_func()
-char my_func(const base_map& bm) {
+BaseQualPair my_func(const base_map& bm) {
     // find base in quality_map most populated entry
-    size_t maxQuality_entry;
-    base_map::const_iterator maxBase_iter;
-    size_t max_entries;
-    sumQualScores(maxBase_iter->second);
     base_map::const_iterator base_iter = bm.begin();
+    base_map::const_iterator maxBase_iter = bm.end();
+    size_t max_entries = 0;
     while ( base_iter != bm.end()) {
         size_t qual_scores = sumQualScores(base_iter->second);
         if ( qual_scores > max_entries){
             max_entries = qual_scores;
             maxBase_iter = base_iter;
         }
+        base_iter++;
     }
-    
-    /*if ( max_entries > 0 ) {
-        return BaseQualPair('x','y');
-    }*/
 
-    size_t total_entries = 0;
-    size_t sum = 0;
-    base_iter = bm.begin();
-    for (; base_iter != bm.end(); base_iter++) {
-        char qual = base_iter->first;
-        size_t qual_val = qualToNum(qual); 
-        //sum += qual_val*base_iter->second;
-        //total_entries += base_iter->second;
+    if ( base_iter == maxBase_iter ) return BaseQualPair(NULL, NULL );
+   
+    size_t total_entries = 0u;
+    double sum = 0.0;
+    double avg = 0.0;
+    quality_map::const_iterator qual_iter = 
+        maxBase_iter->second.begin();
+    while ( qual_iter != maxBase_iter->second.end() ) {    
+        total_entries += qual_iter->second;
+        sum += qualToProb(qual_iter->first)*qual_iter->second;
+        qual_iter++;
     }
-    size_t avg = (sum/total_entries)*100;
-    char qual = qualToChar(avg);
-    return qual;
-
+    if ( total_entries > 0 ) {
+        avg = sum / total_entries;
+    }
+    char q_ascii = probToQual(avg);
+    return BaseQualPair(maxBase_iter->first, q_ascii);
 }
+
+// slide_windowTwo()
+// slide across alignments with ConstBamAlignmentIterator
+void slide_windowTwo(G_Map& lkup, BA_Reader bar, size_t k) { 
+	BA_Reader::ListIterator iter = bar.lbegin(my_func);
+	BA_Reader::ListIterator end  = bar.lend();
+    while ( iter != end ) {
+		string token;
+		for (size_t i = 0; i < k; i++ ) {
+			BaseQualPair value = *iter;
+			token += value.first;
+			token += value.second;
+			iter++;
+			if ( iter == end ) break;	
+		}
+        G_Map::iterator p_entry = lkup.find(token);
+        if ( p_entry == lkup.end() ) {   
+        	lkup.insert(pair<string, size_t>(token, 1u));
+        	lkup.insert(pair<string, size_t>(token, 2u));
+		}   
+	 	else {
+            p_entry->second++;
+        }
+    }
+    //
+	// print out map of <base,quality> keys and occurence counts 
+	//
+    for (MapIterator iter = lkup.begin(); iter != lkup.end(); ++iter) {
+    	cout << iter->first << " => " << iter->second << endl;
+    }  
+    
+}
+
 
 // main()
 int main(int argc, char** argv) {
@@ -189,8 +211,8 @@ int main(int argc, char** argv) {
 	 
     BamAlignmentReader bar ( bam_file );
 	G_Map m;
-	slide_window(m, bar, 1);
-	ConstBamAlignmentIterator iter = bar.begin ();
+	//slide_window(m, bar, 1);
+    ConstBamAlignmentIterator iter = bar.begin ();
 	int count = 0;
 	while ( iter != bar.end() ) {
     	iter++;		
@@ -216,10 +238,26 @@ int main(int argc, char** argv) {
 	}*/
 	
 	BA_Reader ba_reader (bam_file);
-    ba_reader.print_tree();
-    
-    //m_pbq_summaryFunc = (*pbq_summaryFunc)(*m_pt_iter);
+    //ba_reader.print_tree();
+
+
     //ba_reader.summarizeBases(my_func);
+
+    G_Map map;
+    slide_windowTwo(map, ba_reader,9);
+    
+    int countTwo = 0;
+    BA_Reader::ListIterator li = ba_reader.lbegin(my_func);
+    for (; li != ba_reader.lend(); li++) {
+        pair<char, char> iter_pair = *li;       
+        //cout << "base= " << iter_pair.first 
+        //    << "quality= " << iter_pair.second;
+        //li++;
+        countTwo++;
+    }
+    
+    double chaosTwo = measure_entropy(map, countTwo);
+    cout << chaosTwo << endl;
 
     reader.Close();
 	return EXIT_SUCCESS;
