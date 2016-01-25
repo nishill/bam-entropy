@@ -189,12 +189,60 @@ BA_Reader::BaseQualInfo BA_Reader::CompressionIterator::operator * (){
 
 
 // summarizeBases()
-void BA_Reader::summarizeBases(pbq_summaryFunc pFunc ) {
+void BA_Reader::summarizeBases(bqpf_summaryFunc pFunc ) {
     PT::iterator iter = m_pt.begin();
     while ( iter != m_pt.end() ) {
-        BaseQualPair bqp = (*pFunc)(*iter);
-        char base = bqp.first;
-        char qual = bqp.second;
+        BaseQualPairFunc bqpf = (*pFunc)(*iter);
+        char base = bqpf.first;
+        char qual = bqpf.second;
         iter++;
     }
+}
+
+
+
+//////////////////////////////////////
+////    ListIterator Class        ////
+//////////////////////////////////////
+
+// ListIterator constructor for begin
+BA_Reader::ListIterator::ListIterator(BA_Reader& read, 
+                                        bqpf_summaryFunc sumFunc): 
+    m_pt_iter(read.m_pt.begin()), m_pSummaryFunc(sumFunc){}
+
+// ListIterator constructor for end
+BA_Reader::ListIterator::ListIterator(BA_Reader& read ):
+    m_pt_iter(read.m_pt.end()), m_pSummaryFunc(NULL) {}  
+
+// ListIterator lbegin()
+BA_Reader::ListIterator BA_Reader::lbegin(bqpf_summaryFunc p_func) {
+    return ListIterator(*this, p_func);
+}
+
+// ListIterator lend()
+BA_Reader::ListIterator BA_Reader::lend(){
+    return ListIterator(*this);
+}
+
+// ListIterator operator++
+BA_Reader::ListIterator& BA_Reader::ListIterator::operator++ ( int ) {
+    m_pt_iter++;
+    return *this; 
+}
+
+// ListIterator operator*
+pair<char,char> BA_Reader::ListIterator::operator*() {
+
+    return (*m_pSummaryFunc)(*m_pt_iter);
+
+}
+
+// ListIterator operator==
+bool BA_Reader::ListIterator::operator==(const ListIterator& rhs) const{
+    return m_pt_iter == rhs.m_pt_iter;
+}
+
+// ListIterator operator!=
+bool BA_Reader::ListIterator::operator!=(const ListIterator& rhs ) const {
+    return !this->operator==(rhs);
 }
