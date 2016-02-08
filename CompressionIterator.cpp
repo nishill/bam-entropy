@@ -21,6 +21,24 @@ using namespace std;
 #include "api/SamSequenceDictionary.h"
 using namespace BamTools;
 
+void BA_Reader::print_ops() {
+    int32_t curr_pos = m_first_pos;
+    PT::iterator pos_iter = m_pt.begin();
+    CigarOp op = '\0';
+    while ( pos_iter != m_pt.end()) {
+        cout << "Genome position " << curr_pos  << endl;
+        base_map::iterator base_iter = pos_iter->begin();
+        while ( base_iter != pos_iter->end()) {
+            char curr_base = base_iter->first;
+            cout << "\t Current base is " << curr_base <<endl;
+            base_iter++;
+        }
+        pos_iter++;
+        curr_pos++;
+    }
+    
+}
+
 // print_tree()
 void BA_Reader::print_tree() {
     
@@ -50,10 +68,13 @@ void BA_Reader::print_tree() {
 void BA_Reader::m_insert_base( base_map & p_map, 
                     const BamAlignment & ba, int32_t base_pos ){ 
     char base_key = ba.AlignedBases[base_pos];
+    char quality_key = ba.Qualities[base_pos];
+    // indicates inconsistency within the bam file
+    if ( !isgraph(base_key) or !isgraph(quality_key)) return;
+    
     typedef pair < base_map :: iterator, bool > BaseResult;
     BaseResult base_result =
             p_map.emplace(base_key, quality_map());
-    char quality_key = ba.Qualities[base_pos];
     typedef pair < quality_map :: iterator, bool > QualityResult;
     QualityResult qr = 
             base_result.first->second.emplace(quality_key, 0u);
@@ -67,12 +88,21 @@ BA_Reader::BA_Reader ( const string & fileName ) :
     BamReader bar;
     bar.Open( fileName );
     BamAlignment alignment;
+    vector<CigarOp> cigar_data = alignment.CigarData;
     PT::iterator pnext_map = m_pt.end();
     PT::iterator pcurr_map = m_pt.end();
     bool success = bar.GetNextAlignment(alignment);
     if (success ) m_first_pos = alignment.Position;
     while ( success ) {
         int32_t curr_pos = alignment.Position;
+        
+        /*vector<CigarOp>::iterator vco = cigar_data.begin();
+        for (; vco != cigar_data.end(); vco++ ) {
+            //cout << vco->Length;
+            for ( int i = 0; i < vco->Length; i++ ) {
+                cout << *i << endl;
+            }
+        }*/
         BamAlignment nextAlignment;
         success = bar.GetNextAlignment ( nextAlignment );
         int32_t next_pos;
@@ -148,7 +178,7 @@ BA_Reader::CompressionIterator::CompressionIterator(BA_Reader& reader):
     }
     m_pba_reader = NULL;
 }
-
+// constructor without arguments 
 BA_Reader::CompressionIterator::CompressionIterator():
     m_pba_reader(NULL) {}
 
@@ -226,15 +256,23 @@ BA_Reader::ListIterator BA_Reader::lend(){
 
 // ListIterator operator++
 BA_Reader::ListIterator& BA_Reader::ListIterator::operator++ ( int ) {
+    BA_Reader::ListIterator temp = *this;
     m_pt_iter++;
-    return *this; 
+    return temp; 
+}
+
+// ListIterator operator++
+BA_Reader::ListIterator& BA_Reader::ListIterator::operator++() {
+    m_pt_iter++;
+    return *this;
 }
 
 // ListIterator operator*
 pair<char,char> BA_Reader::ListIterator::operator*() {
-
-    return (*m_pSummaryFunc)(*m_pt_iter);
-
+    pair <char,char> summary = (*m_pSummaryFunc)(*m_pt_iter);
+    assert(isgraph(summary.first));
+    assert(isgraph(summary.second));
+    return summary;
 }
 
 // ListIterator operator==

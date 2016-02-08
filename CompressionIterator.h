@@ -62,6 +62,7 @@ class BA_Reader {
 
         BA_Reader ( const string & fileName );
         void print_tree(); 
+        void print_ops();
         CompressionIterator begin();
         CompressionIterator end(); 
         
@@ -81,6 +82,7 @@ class BA_Reader {
                 bool operator==(const ListIterator&) const;
                 bool operator!=(const ListIterator&) const;
                 ListIterator& operator++( int );
+                ListIterator& operator++();
                 pair<char,char> operator*();
         };
 

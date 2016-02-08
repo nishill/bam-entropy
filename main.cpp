@@ -128,6 +128,7 @@ BaseQualPair my_func(const base_map& bm) {
     base_map::const_iterator maxBase_iter = bm.end();
     size_t max_entries = 0;
     while ( base_iter != bm.end()) {
+        assert(isgraph(base_iter->first));
         size_t qual_scores = sumQualScores(base_iter->second);
         if ( qual_scores > max_entries){
             max_entries = qual_scores;
@@ -136,7 +137,7 @@ BaseQualPair my_func(const base_map& bm) {
         base_iter++;
     }
 
-    if ( base_iter == maxBase_iter ) return BaseQualPair(NULL, NULL );
+    if ( base_iter == maxBase_iter ) return BaseQualPair('Z', '!' );
    
     size_t total_entries = 0u;
     double sum = 0.0;
@@ -152,6 +153,8 @@ BaseQualPair my_func(const base_map& bm) {
         avg = sum / total_entries;
     }
     char q_ascii = probToQual(avg);
+    assert(isgraph( q_ascii ));
+    assert( maxBase_iter->first);
     return BaseQualPair(maxBase_iter->first, q_ascii);
 }
 
@@ -159,20 +162,25 @@ BaseQualPair my_func(const base_map& bm) {
 // slide across alignments with ConstBamAlignmentIterator
 void slide_windowTwo(G_Map& lkup, BA_Reader bar, size_t k) { 
 	BA_Reader::ListIterator iter = bar.lbegin(my_func);
-	BA_Reader::ListIterator end  = bar.lend();
+	const BA_Reader::ListIterator end  = bar.lend();
     while ( iter != end ) {
 		string token;
 		for (size_t i = 0; i < k; i++ ) {
-			BaseQualPair value = *iter;
-			token += value.first;
-			token += value.second;
-			iter++;
-			if ( iter == end ) break;	
-		}
+		    if ( iter != end ) {            
+                BaseQualPair value = *iter;
+			    token += value.first;
+			    token += value.second;
+			    iter++;
+            }
+		    else {
+                token += ' ';
+                token += ' ';
+            }        
+        }
+        //cout << token << endl;
         G_Map::iterator p_entry = lkup.find(token);
         if ( p_entry == lkup.end() ) {   
         	lkup.insert(pair<string, size_t>(token, 1u));
-        	lkup.insert(pair<string, size_t>(token, 2u));
 		}   
 	 	else {
             p_entry->second++;
@@ -181,9 +189,9 @@ void slide_windowTwo(G_Map& lkup, BA_Reader bar, size_t k) {
     //
 	// print out map of <base,quality> keys and occurence counts 
 	//
-    for (MapIterator iter = lkup.begin(); iter != lkup.end(); ++iter) {
+    /*for (MapIterator iter = lkup.begin(); iter != lkup.end(); ++iter) {
     	cout << iter->first << " => " << iter->second << endl;
-    }  
+    } */ 
     
 }
 
@@ -239,12 +247,12 @@ int main(int argc, char** argv) {
 	
 	BA_Reader ba_reader (bam_file);
     //ba_reader.print_tree();
-
+    //ba_reader.print_ops();    
 
     //ba_reader.summarizeBases(my_func);
 
     G_Map map;
-    slide_windowTwo(map, ba_reader,9);
+    slide_windowTwo(map, ba_reader, 9);
     
     int countTwo = 0;
     BA_Reader::ListIterator li = ba_reader.lbegin(my_func);
@@ -255,9 +263,14 @@ int main(int argc, char** argv) {
         //li++;
         countTwo++;
     }
-    
-    double chaosTwo = measure_entropy(map, countTwo);
-    cout << chaosTwo << endl;
+   
+    //
+    //  calculate and print out entropy values 
+    //  with the newest medthod  
+    //
+    /*double chaosTwo = measure_entropy(map, countTwo);
+    cout << "entropy = " << chaosTwo << 
+        ", base count = " << countTwo << endl;*/
 
     reader.Close();
 	return EXIT_SUCCESS;
