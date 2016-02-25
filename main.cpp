@@ -25,6 +25,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <cmath>
+#include <sstream>
 using namespace std;
 
 #include "api/BamReader.h"
@@ -40,6 +41,21 @@ using namespace BamTools;
 typedef map <string, size_t> G_Map;
 typedef map <string, size_t>::const_iterator MapIterator;
 typedef pair<char,char> BaseQualPair;
+
+/*map<char, string> AminoAcids = {{'F', "TTT"},
+                                {'F', "TTC"},
+                                {'F', "TTA"},
+                                {'F', "TTG"},
+                                {'M', "ATG"}};*/
+
+
+// start codon
+const string Methionine = "ATG";
+// stop codons 
+const string Ochre = "TAA";
+const string Amber = "TAG";
+const string Opal = "TGA";
+
 
 // measure_entropy()
 // compute probability then finds 
@@ -121,9 +137,12 @@ char probToQual( double p_value ) {
     return result;
 }
 
-// my_func()
-BaseQualPair my_func(const base_map& bm) {
+
+// summary_func()
+BA_Reader::BaseQualCode summary_func(const base_map& bm) {
     // find base in quality_map most populated entry
+    
+    BA_Reader::BaseQualCode bqc('\0', '\0');;
     base_map::const_iterator base_iter = bm.begin();
     base_map::const_iterator maxBase_iter = bm.end();
     size_t max_entries = 0;
@@ -137,7 +156,11 @@ BaseQualPair my_func(const base_map& bm) {
         base_iter++;
     }
 
-    if ( base_iter == maxBase_iter ) return BaseQualPair('Z', '!' );
+    if ( base_iter == maxBase_iter ) {
+        bqc.m_base = 'Z';
+        bqc.m_quality = '!';
+        return bqc;
+    }
    
     size_t total_entries = 0u;
     double sum = 0.0;
@@ -155,21 +178,32 @@ BaseQualPair my_func(const base_map& bm) {
     char q_ascii = probToQual(avg);
     assert(isgraph( q_ascii ));
     assert( maxBase_iter->first);
-    return BaseQualPair(maxBase_iter->first, q_ascii);
+    return BA_Reader::BaseQualCode(maxBase_iter->first, q_ascii);
 }
+
+// pos_summary_func()
+/*BaseQualPair pos_summary_func(const base_map& bm ) {
+
+    int32_t curr_pos = m_firsr_pos;  
+    PT::iterator pos_iter = 
+
+
+ 
+}*/
+
 
 // slide_windowTwo()
 // slide across alignments with ConstBamAlignmentIterator
 void slide_windowTwo(G_Map& lkup, BA_Reader bar, size_t k) { 
-	BA_Reader::ListIterator iter = bar.lbegin(my_func);
+	BA_Reader::ListIterator iter = bar.lbegin(summary_func);
 	const BA_Reader::ListIterator end  = bar.lend();
     while ( iter != end ) {
 		string token;
 		for (size_t i = 0; i < k; i++ ) {
 		    if ( iter != end ) {            
-                BaseQualPair value = *iter;
-			    token += value.first;
-			    token += value.second;
+                BA_Reader::BaseQualCode value = *iter;
+			    token += value.m_base;
+			    token += value.m_quality;
 			    iter++;
             }
 		    else {
@@ -177,7 +211,6 @@ void slide_windowTwo(G_Map& lkup, BA_Reader bar, size_t k) {
                 token += ' ';
             }        
         }
-        //cout << token << endl;
         G_Map::iterator p_entry = lkup.find(token);
         if ( p_entry == lkup.end() ) {   
         	lkup.insert(pair<string, size_t>(token, 1u));
@@ -193,6 +226,113 @@ void slide_windowTwo(G_Map& lkup, BA_Reader bar, size_t k) {
     	cout << iter->first << " => " << iter->second << endl;
     } */ 
     
+}
+
+
+// get_base_summary()
+// returns a vector of the summarized bases
+vector<char> get_base_summary(BA_Reader bar) {
+    BA_Reader::ListIterator begin = bar.lbegin(summary_func);
+    BA_Reader::ListIterator end = bar.lend();
+    vector<char> base_content;
+    for (; begin != end; begin++ ) { 
+        if ( begin != end ) {
+            BA_Reader::BaseQualCode value = *begin;
+            base_content.push_back(value.m_base);            
+        }
+    }
+    
+    //vector<char>::iterator iter = base_content.begin();
+    //for (; iter != base_content.end(); iter++) cout << *iter;
+    
+    return base_content;
+}    
+
+// seperate()
+// seperate the itron/exon regions
+void seperate (vector<string> codon_vec ) {
+   
+    vector<string> exons;
+    string exon, intron;
+    string amino_acid = "XXX";
+    size_t i = 0;
+    // exon regions
+    bool value = true;
+    while ( i < codon_vec.size() ) {    
+        string pre_exon = "";
+        amino_acid = codon_vec[i];
+        while ( value ) {    
+            if ( amino_acid == Methionine and
+                 pre_exon == "") {
+                exon += amino_acid;
+                pre_exon = amino_acid;
+                amino_acid.clear();
+                value = false;
+            }
+            if ( amino_acid != Ochre and
+                 amino_acid != Opal and
+                 amino_acid != Amber ) {
+                if ( exon.at(0) == 'A' and 
+                     exon.at(1) == 'T' and
+                     exon.at(2) == 'G' ) value = true;  
+                else value = false;
+                exon += amino_acid;
+                pre_exon = amino_acid;
+                amino_acid.clear();
+                value = false;
+            }
+            if ( amino_acid == Ochre or
+                 amino_acid == Amber or 
+                 amino_acid == Opal ) {
+                 exon+= amino_acid;
+                pre_exon = amino_acid;
+                amino_acid.clear();
+                value = false;
+            }
+            if ( pre_exon == Ochre or
+                 pre_exon == Amber or
+                 pre_exon == Opal ) {
+                exons.push_back(exon);
+                exon.clear();
+                value = false;
+            }
+        }
+        i++; 
+        value = true;
+    }
+    cout << endl;
+    //cout << exsxdsq2on << endl;
+
+    //vector<string>::iterator ebegin = exons.begin();
+    //for (; ebegin != exons.end(); ebegin++ ) cout << *ebegin << endl;
+
+}
+
+
+
+// load()
+// returns a vector of amino acids 
+vector<string> load(vector<char> base_vec) {
+    vector<char>::iterator iter  = base_vec.begin();
+    vector<char>::iterator end   = base_vec.end();
+    string amino_acid; 
+    vector<string> codons;
+    while ( iter != end) {
+        for ( int j = 0; j < 3; j++ ) {        
+            if ( iter != end ) {         
+                char base = *iter;
+                amino_acid += base;             
+                iter++;
+            }
+        }
+        codons.push_back(amino_acid);
+        amino_acid.clear();
+    }
+    
+    //vector<string>::iterator i = codons.begin();
+    //for(; i != codons.end(); i++) cout << *i << " ";
+    cout << endl; 
+    return codons;
 }
 
 
@@ -219,7 +359,7 @@ int main(int argc, char** argv) {
 	 
     BamAlignmentReader bar ( bam_file );
 	G_Map m;
-	//slide_window(m, bar, 1);
+	slide_window(m, bar, 1);
     ConstBamAlignmentIterator iter = bar.begin ();
 	int count = 0;
 	while ( iter != bar.end() ) {
@@ -230,10 +370,10 @@ int main(int argc, char** argv) {
     //
     // calculate and print out entropy value
 	//
-    /*double chaos = measure_entropy(m, count);
+    double chaos = measure_entropy(m, count);
 	cout << "The measured entropy value of " << bam_file
 		 <<" is " << chaos << "." << endl;
-	cout << endl;*/
+	cout << endl;
 
 	//
     // print out alignments w/ qualities
@@ -246,24 +386,34 @@ int main(int argc, char** argv) {
 	}*/
 	
 	BA_Reader ba_reader (bam_file);
+    //ba_reader.pos_summary_func();
     //ba_reader.print_tree();
-    //ba_reader.print_ops();    
 
-    //ba_reader.summarizeBases(my_func);
+    //ba_reader.summarizeBases(summary_func);
 
     G_Map map;
-    slide_windowTwo(map, ba_reader, 9);
+    //slide_windowTwo(map, ba_reader, 9);
     
+    vector<char> base_info = get_base_summary(ba_reader);    
+    vector<string> codon_vec = load(base_info);   
+    //seperate(codon_vec);
+
     int countTwo = 0;
-    BA_Reader::ListIterator li = ba_reader.lbegin(my_func);
+    BA_Reader::ListIterator li = ba_reader.lbegin(summary_func);
+    //bool flag = true;
+    string token;
     for (; li != ba_reader.lend(); li++) {
-        pair<char, char> iter_pair = *li;       
-        //cout << "base= " << iter_pair.first 
-        //    << "quality= " << iter_pair.second;
+        //pair<char, char> iter_pair = *li;       
+        // print out compressed bam
+        BA_Reader::BaseQualCode code = *li;
+        token += code.m_base;
+        //cout << code.m_base;
+        //<< " quality= " << iter_pair.second << endl;
         //li++;
         countTwo++;
+        //cout << "flag xxx=%c\n", flag ? 'T': 'F';
     }
-   
+    
     //
     //  calculate and print out entropy values 
     //  with the newest medthod  
@@ -272,6 +422,19 @@ int main(int argc, char** argv) {
     cout << "entropy = " << chaosTwo << 
         ", base count = " << countTwo << endl;*/
 
+  
+    //
+    //  calculate total compression
+    //
+    double compressionSize = token.size();
+    double compressionRatio = count/compressionSize; 
+    double compressionPercentage = (compressionSize/count)*100;
+    cout << compressionRatio << " : 1 compression acheived" << endl;
+    cout << "Percentage of base and quality scores compressed= " <<
+    compressionPercentage << "%" << endl;
+    
+    cout << endl;
+    
     reader.Close();
 	return EXIT_SUCCESS;
 }

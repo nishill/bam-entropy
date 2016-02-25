@@ -12,6 +12,7 @@
 #include <iterator>
 #include <stdexcept>
 #include "CompressionIterator.h"
+#include <cmath>
 using namespace std;
 
 #include "api/BamReader.h"
@@ -21,23 +22,25 @@ using namespace std;
 #include "api/SamSequenceDictionary.h"
 using namespace BamTools;
 
-void BA_Reader::print_ops() {
-    int32_t curr_pos = m_first_pos;
-    PT::iterator pos_iter = m_pt.begin();
-    CigarOp op = '\0';
-    while ( pos_iter != m_pt.end()) {
-        cout << "Genome position " << curr_pos  << endl;
-        base_map::iterator base_iter = pos_iter->begin();
-        while ( base_iter != pos_iter->end()) {
-            char curr_base = base_iter->first;
-            cout << "\t Current base is " << curr_base <<endl;
-            base_iter++;
-        }
-        pos_iter++;
-        curr_pos++;
-    }
-    
-}
+// Base character content
+typedef list<char> BaseContent;
+
+// det_mag() - determine magnitude of quality score
+char BA_Reader::det_mag( char q_ascii ) {
+
+    if ( q_ascii < '!') q_ascii = '!';
+    if ( q_ascii > 'K') q_ascii = 'K';
+    double q_value = q_ascii - '!';
+    double p_value = pow(10.0, -q_value / 10.0);
+
+    char strong = 'S';
+    char weak = 'W';
+
+    if ( p_value >= 0.00100 ) return strong;
+    else if ( p_value < 0.00100 )return weak;
+
+} 
+
 
 // print_tree()
 void BA_Reader::print_tree() {
@@ -88,21 +91,13 @@ BA_Reader::BA_Reader ( const string & fileName ) :
     BamReader bar;
     bar.Open( fileName );
     BamAlignment alignment;
-    vector<CigarOp> cigar_data = alignment.CigarData;
+    
     PT::iterator pnext_map = m_pt.end();
     PT::iterator pcurr_map = m_pt.end();
     bool success = bar.GetNextAlignment(alignment);
     if (success ) m_first_pos = alignment.Position;
     while ( success ) {
         int32_t curr_pos = alignment.Position;
-        
-        /*vector<CigarOp>::iterator vco = cigar_data.begin();
-        for (; vco != cigar_data.end(); vco++ ) {
-            //cout << vco->Length;
-            for ( int i = 0; i < vco->Length; i++ ) {
-                cout << *i << endl;
-            }
-        }*/
         BamAlignment nextAlignment;
         success = bar.GetNextAlignment ( nextAlignment );
         int32_t next_pos;
@@ -219,7 +214,7 @@ BA_Reader::BaseQualInfo BA_Reader::CompressionIterator::operator * (){
 
 
 // summarizeBases()
-void BA_Reader::summarizeBases(bqpf_summaryFunc pFunc ) {
+/*void BA_Reader::summarizeBases(bqpf_summaryFunc pFunc ) {
     PT::iterator iter = m_pt.begin();
     while ( iter != m_pt.end() ) {
         BaseQualPairFunc bqpf = (*pFunc)(*iter);
@@ -227,7 +222,7 @@ void BA_Reader::summarizeBases(bqpf_summaryFunc pFunc ) {
         char qual = bqpf.second;
         iter++;
     }
-}
+}*/
 
 
 
@@ -235,14 +230,18 @@ void BA_Reader::summarizeBases(bqpf_summaryFunc pFunc ) {
 ////    ListIterator Class        ////
 //////////////////////////////////////
 
-// ListIterator constructor for begin
+// ListIterator constructor (for begin)
 BA_Reader::ListIterator::ListIterator(BA_Reader& read, 
                                         bqpf_summaryFunc sumFunc): 
-    m_pt_iter(read.m_pt.begin()), m_pSummaryFunc(sumFunc){}
+    m_pt_iter(read.m_pt.begin()), m_pt_iter_end(read.m_pt.end()),
+    m_pSummaryFunc(sumFunc), m_baseLookaheadBuf{0,0}, 
+    m_qualLookaheadBuf(0), m_inExonRegion(false){}
 
-// ListIterator constructor for end
+// ListIterator constructor (for end)
 BA_Reader::ListIterator::ListIterator(BA_Reader& read ):
-    m_pt_iter(read.m_pt.end()), m_pSummaryFunc(NULL) {}  
+    m_pt_iter(read.m_pt.end()), m_pt_iter_end(read.m_pt.end()),
+    m_pSummaryFunc(NULL), m_baseLookaheadBuf{0,0}, 
+    m_qualLookaheadBuf(0), m_inExonRegion(false){}  
 
 // ListIterator lbegin()
 BA_Reader::ListIterator BA_Reader::lbegin(bqpf_summaryFunc p_func) {
@@ -255,23 +254,28 @@ BA_Reader::ListIterator BA_Reader::lend(){
 }
 
 // ListIterator operator++
-BA_Reader::ListIterator& BA_Reader::ListIterator::operator++ ( int ) {
+BA_Reader::ListIterator BA_Reader::ListIterator::operator++ ( int ) {
     BA_Reader::ListIterator temp = *this;
+    //m_next();
     m_pt_iter++;
     return temp; 
 }
 
 // ListIterator operator++
 BA_Reader::ListIterator& BA_Reader::ListIterator::operator++() {
+    //m_next();
     m_pt_iter++;
     return *this;
 }
 
 // ListIterator operator*
-pair<char,char> BA_Reader::ListIterator::operator*() {
-    pair <char,char> summary = (*m_pSummaryFunc)(*m_pt_iter);
-    assert(isgraph(summary.first));
-    assert(isgraph(summary.second));
+BA_Reader::BaseQualCode BA_Reader::ListIterator::operator*() {
+    //BaseQualCode summary = m_current();
+    BaseQualCode summary = (*m_pSummaryFunc)(*m_pt_iter);
+    //pair < char, char > summary = (*m_pSummaryFunc)(*m_pt_iter);
+    assert ( std :: isgraph ( summary.m_base ) );
+    assert ( std :: isgraph ( summary.m_quality ) );
+    
     return summary;
 }
 
@@ -283,4 +287,51 @@ bool BA_Reader::ListIterator::operator==(const ListIterator& rhs) const{
 // ListIterator operator!=
 bool BA_Reader::ListIterator::operator!=(const ListIterator& rhs ) const {
     return !this->operator==(rhs);
+}
+
+// m_advance()
+void BA_Reader::ListIterator::m_advance() {
+    BaseQualCode cur = (*m_pSummaryFunc)(*m_pt_iter);
+    m_pt_iter++;
+    m_baseLookaheadBuf[0] = m_baseLookaheadBuf[0] << 8u;
+    m_qualLookaheadBuf = m_qualLookaheadBuf << 8u;
+    m_baseLookaheadBuf[1] = m_baseLookaheadBuf[1] << 8u;
+    m_baseLookaheadBuf[0] = m_baseLookaheadBuf[0] | 
+                            static_cast<unsigned>(cur.m_base);
+    
+    m_qualLookaheadBuf = m_qualLookaheadBuf | 
+                            static_cast<unsigned>(cur.m_quality);
+    const unsigned compare0 = m_baseLookaheadBuf[0] & 0xffffff;
+    m_baseLookaheadBuf[1] = m_baseLookaheadBuf[1] | (m_baseLookaheadBuf[0]>>24);
+    const unsigned compare1 = m_baseLookaheadBuf[1] & 0xffffff;
+    // start codon
+    if ( compare0 == m_Methionine ) m_inExonRegion = true;
+    // stop codon 1
+    if ( compare1 == m_Ochre ) m_inExonRegion = false;
+    // stop codon 2
+    if ( compare1 == m_Amber ) m_inExonRegion = false;
+    // stop codon 3
+    if ( compare1 == m_Opal ) m_inExonRegion = false;
+    
+}
+
+// m_next()
+void BA_Reader::ListIterator::m_next() {
+    
+    while ( m_pt_iter != this->m_pt_iter_end ) {
+        m_advance();
+    }
+
+}
+
+// m_current()
+BA_Reader::BaseQualCode BA_Reader::ListIterator::m_current() {
+    //return pair<char,char>(
+        //static_cast<char>((m_baseLookaheadBuf[0]>>16) & 0xff),
+        //static_cast<char>((m_qualLookaheadBuf>>16) & 0xff));
+    return BA_Reader::BaseQualCode(static_cast<char>((m_baseLookaheadBuf[0]>>16) & 0xff),
+                        static_cast<char>((m_qualLookaheadBuf>>16) & 0xff));
+                        //m_inExonRegion); 
+
+
 }
